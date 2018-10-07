@@ -39,11 +39,11 @@ constexpr T warp(T val, T min, T max) noexcept { return (val > max ? max : (val 
 
 namespace {
     //These are the parameters of PID controller
-    constexpr float kp = 0.6f;     //Proportional
-    constexpr float ki = 0.025f;     //Integration
+    constexpr float kp = 1.2f;     //Proportional
+    constexpr float ki = 60.0f;     //Integration
     constexpr float kd = 0.05f;     //Derivative
     constexpr float dt = 2.f / 1000.f;
-    constexpr float error_min = -10000.f, error_max = 10000.f;
+    constexpr float error_min = -1000000.f, error_max = 1000000.f;
 }
 
 class pid_controller {
@@ -51,7 +51,7 @@ public:
     int16_t step(const int16_t setPoint, const int16_t current) noexcept {
         auto error = setPoint - current;
         auto derivative = static_cast<float>(error - _last) / dt;
-        _integration = warp(_integration + static_cast<float>(error) * dt, error_min, error_max);
+        _integration = warp((_integration + static_cast<float>(error) * dt) * 0.985f, error_min, error_max);
         _last = error;
         return warp<int16_t>(static_cast<int16_t>(kp * error + ki * _integration + kd * derivative), -10000, 10000);
     }
@@ -63,14 +63,14 @@ private:
 
 class chassis_controller {
 public:
-    static void run() noexcept {
-        chstd::thread([]() {
+    static auto run() noexcept {
+        return chstd::thread([]() {
             static chassis_controller instance;
             for (;;) {
                 instance.step();
                 chstd::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
-        }).detach();
+        });
     }
 
 private:
@@ -103,12 +103,7 @@ int main() {
     RC_init();
     can_processInit();
 
-    chassis_controller::run();
-
-    for (;;) {
-        palTogglePad(GPIOA, GPIOA_LED);
-        chstd::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+    chassis_controller::run().join();
 }
 
 #pragma clang diagnostic pop
